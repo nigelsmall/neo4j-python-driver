@@ -23,12 +23,13 @@ import functools
 from os import getenv, remove, rename
 from os.path import isfile, dirname, join as path_join
 from socket import create_connection
-from subprocess import call, check_call, CalledProcessError
+from subprocess import check_call, CalledProcessError
 from threading import Thread
 from time import sleep
 from unittest import TestCase
 
 from neo4j.util import Watcher
+from neo4j.v1.session import basic_auth
 from neo4j.v1.constants import KNOWN_HOSTS
 
 KNOWN_HOSTS_BACKUP = KNOWN_HOSTS + ".backup"
@@ -77,6 +78,45 @@ def restart_server(http_port=7474):
                 s.close()
                 running = True
         return running
+
+
+class IntegrationTestCase(TestCase):
+
+    controller = None
+    edition = "enterprise"
+    version = "3.1.0"
+
+    user = "neotest"
+    password = "neotest"
+    auth_token = basic_auth(user, password)
+
+    bolt_uri = None
+    http_uri = None
+
+    @classmethod
+    def setUpClass(cls):
+        import platform
+        from sys import stderr
+        run_dir = path_join(dirname(__file__), "run")
+        if platform.system() == "Windows":
+            from boltkit.controller import WindowsController
+            home = WindowsController.install(cls.edition, cls.version, run_dir)
+            cls.controller = WindowsController(home, verbosity=1)
+        else:
+            from boltkit.controller import UnixController
+            home = UnixController.install(cls.edition, cls.version, run_dir)
+            cls.controller = UnixController(home, verbosity=1)
+        cls.controller.create_user(cls.user, cls.password)
+        cls.controller.set_user_role(cls.user, "admin")
+        install_info = cls.controller.start()
+        cls.http_uri = install_info.http_uri_str()
+        cls.bolt_uri = install_info.bolt_uri_str()
+        stderr.write("Neo4j %s listening on %s\n" % (cls.version, cls.bolt_uri))
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.controller:
+            cls.controller.stop()
 
 
 class ServerTestCase(TestCase):

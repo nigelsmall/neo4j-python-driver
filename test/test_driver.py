@@ -26,7 +26,7 @@ from unittest import skipUnless
 from neo4j.v1 import ServiceUnavailable, ProtocolError, READ_ACCESS, WRITE_ACCESS, \
     TRUST_ON_FIRST_USE, TRUST_CUSTOM_CA_SIGNED_CERTIFICATES, GraphDatabase, basic_auth, \
     custom_auth, SSL_AVAILABLE, SessionExpired, DirectDriver, RoutingDriver
-from test.util import ServerTestCase, StubCluster
+from test.util import ServerTestCase, StubCluster, IntegrationTestCase
 
 BOLT_URI = "bolt://localhost:7687"
 BOLT_ROUTING_URI = "bolt+routing://localhost:7687"
@@ -63,14 +63,14 @@ AUTH_TOKEN = basic_auth(TEST_USER, TEST_PASSWORD)
 #                 assert result is not None
 
 
-class DriverTestCase(ServerTestCase):
+class DriverTestCase(IntegrationTestCase):
 
     def test_must_use_valid_url_scheme(self):
         with self.assertRaises(ProtocolError):
-            GraphDatabase.driver("x://xxx", auth=AUTH_TOKEN)
+            GraphDatabase.driver("x://xxx", auth=self.auth_token)
 
     def test_connections_are_reused(self):
-        with GraphDatabase.driver(BOLT_URI, auth=AUTH_TOKEN) as driver:
+        with GraphDatabase.driver(self.bolt_uri, auth=self.auth_token) as driver:
             session_1 = driver.session()
             connection_1 = session_1.connection
             session_1.close()
@@ -80,7 +80,7 @@ class DriverTestCase(ServerTestCase):
             assert connection_1 is connection_2
 
     def test_connections_are_not_shared_between_sessions(self):
-        with GraphDatabase.driver(BOLT_URI, auth=AUTH_TOKEN) as driver:
+        with GraphDatabase.driver(self.bolt_uri, auth=self.auth_token) as driver:
             session_1 = driver.session()
             session_2 = driver.session()
             try:
@@ -90,8 +90,8 @@ class DriverTestCase(ServerTestCase):
                 session_2.close()
 
     def test_fail_nicely_when_connecting_to_http_port(self):
-        uri = "bolt://localhost:7474"
-        with GraphDatabase.driver(uri, auth=AUTH_TOKEN, encrypted=False) as driver:
+        uri = "bolt:" + self.http_uri.partition(":")[-1]
+        with GraphDatabase.driver(uri, auth=self.auth_token, encrypted=False) as driver:
             with self.assertRaises(ServiceUnavailable):
                 driver.session()
 
