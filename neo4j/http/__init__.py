@@ -144,8 +144,8 @@ class HTTPSession(Session):
             else:
                 raise ProtocolError("HTTP request failed: %r" % response)
         finally:
-            self._statements.clear()
-            self._result_loaders.clear()
+            self._statements[:] = ()
+            self._result_loaders[:] = ()
 
     def begin_transaction(self, bookmark=None):
         transaction = super(HTTPSession, self).begin_transaction(bookmark)
