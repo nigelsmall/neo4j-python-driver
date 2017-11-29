@@ -63,6 +63,9 @@ package_data = {
     "neo4j.bolt": ["*.pyx"],
     "neo4j.packstream": ["*.pyx"],
 }
+requirements = [
+    "technige.cypy",
+]
 setup_args = {
     "name": "neo4j-driver",
     "version": version,
@@ -74,6 +77,7 @@ setup_args = {
     "keywords": "neo4j graph database",
     "url": "https://github.com/neo4j/neo4j-python-driver",
     "classifiers": classifiers,
+    "install_requires": requirements,
     "packages": packages,
     "ext_modules": ext_modules,
 }
