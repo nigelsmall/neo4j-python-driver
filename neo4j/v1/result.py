@@ -21,9 +21,14 @@
 
 from collections import namedtuple
 
+from cypy.data import Record
+from cypy.graph import Node, Relationship, Path
+
 from neo4j.exceptions import CypherError
-from neo4j.v1.api import GraphDatabase, StatementResult
-from neo4j.v1.types import Record
+from neo4j.packstream import Structure
+from neo4j.v1.api import StatementResult
+
+from .api import ValueSystem
 
 
 STATEMENT_TYPE_READ_ONLY = "r"
@@ -32,13 +37,95 @@ STATEMENT_TYPE_WRITE_ONLY = "w"
 STATEMENT_TYPE_SCHEMA_WRITE = "s"
 
 
+def _hydrate_node(id_, labels, properties):
+    a = Node(*labels, **properties)
+    a.id = id_
+    return a
+
+
+def _hydrate_relationship(id_, start, end, type_, properties):
+    r = Relationship(start, type_, end, **properties)
+    r.id = id_
+    return r
+
+
+class _UnboundRelationship(object):
+    """ Self-contained graph relationship without endpoints.
+    """
+    id = None
+    type = None
+    properties = None
+
+    @classmethod
+    def hydrate(cls, id_, type_, properties=None):
+        inst = cls(type_, properties)
+        inst.id = id_
+        return inst
+
+    def __init__(self, type_, properties):
+        self.type = type_
+        self.properties = properties
+
+    def bind(self, start, end):
+        inst = Relationship(start, self.type, end, **self.properties)
+        inst.id = self.id
+        return inst
+
+
+def _hydrate_path(nodes, relationships, sequence):
+    assert len(nodes) >= 1
+    assert len(sequence) % 2 == 0
+    last_node = nodes[0]
+    entities = [last_node]
+    for i, rel_index in enumerate(sequence[::2]):
+        assert rel_index != 0
+        next_node = nodes[sequence[2 * i + 1]]
+        if rel_index > 0:
+            entities.append(relationships[rel_index - 1].bind(last_node, next_node))
+        else:
+            entities.append(relationships[-rel_index - 1].bind(next_node, last_node))
+        entities.append(next_node)
+        last_node = next_node
+    return Path(*entities)
+
+
+class PackStreamValueSystem(ValueSystem):
+
+    def hydrate(self, values):
+
+        def hydrate_(obj):
+            if isinstance(obj, Structure):
+                signature, args = obj
+                if signature == b"N":
+                    return _hydrate_node(*map(hydrate_, args))
+                elif signature == b"R":
+                    return _hydrate_relationship(*map(hydrate_, args))
+                elif signature == b"r":
+                    return _UnboundRelationship.hydrate(*map(hydrate_, args))
+                elif signature == b"P":
+                    return _hydrate_path(*map(hydrate_, args))
+                else:
+                    # If we don't recognise the structure type, just return it as-is
+                    return obj
+            elif isinstance(obj, list):
+                return list(map(hydrate_, obj))
+            elif isinstance(obj, dict):
+                return {key: hydrate_(value) for key, value in obj.items()}
+            else:
+                return obj
+
+        return tuple(map(hydrate_, values))
+
+
 class BoltStatementResult(StatementResult):
     """ A handler for the result of Cypher statement execution.
     """
 
-    value_system = GraphDatabase.value_systems["packstream"]
+    value_system = PackStreamValueSystem()
 
-    zipper = Record
+    @staticmethod
+    def zipper(keys, values):
+        return Record(zip(keys, values))
 
     def __init__(self, session, run_response, pull_all_response):
         super(BoltStatementResult, self).__init__(session)

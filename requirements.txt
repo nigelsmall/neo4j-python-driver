@@ -1,1 +1,1 @@
-technige.cypy
+technige.cypy>=1.3.0
