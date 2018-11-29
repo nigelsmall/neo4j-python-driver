@@ -1411,6 +1411,10 @@ class Record(tuple, Mapping):
             return d
         return dict(self)
 
+    def to_jolt(self, **kwargs):
+        from neo4j.jolt import jolt_dumps
+        return jolt_dumps(list(self), **kwargs)
+
 
 class DriverError(Exception):
     """ Raised when an error occurs while using a driver.
