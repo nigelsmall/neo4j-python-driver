@@ -31,7 +31,7 @@ from neo4j.meta import package, version
 
 install_requires = [
     "neobolt<2,>=1.7.3",
-    "neotime<2,>=1.7.2",
+    "neotime<2,>=1.7.3",
 ]
 classifiers = [
     "Intended Audience :: Developers",

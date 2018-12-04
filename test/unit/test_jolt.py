@@ -22,7 +22,7 @@
 from collections import OrderedDict
 from unittest import TestCase
 
-from neotime import Date, Time, DateTime
+from neotime import Date, Time, DateTime, Duration
 from pytz import timezone
 
 from neo4j.jolt import jolt_dumps, jolt_loads
@@ -368,4 +368,14 @@ class JoltTemporalTypeDecodingTestCase(TestCase):
     def test_time(self):
         value = Time(12, 34, 56.789123456)
         encoded = '{"T": "12:34:56.789123456"}'
+        self.assertEqual(value, jolt_loads(encoded))
+
+    def test_date_time(self):
+        value = DateTime(2016, 6, 23, 12, 34, 56.789123456)
+        encoded = '{"T": "2016-06-23T12:34:56.789123456"}'
+        self.assertEqual(value, jolt_loads(encoded))
+
+    def test_duration(self):
+        value = Duration(years=1, months=2, days=3)
+        encoded = '{"T": "P1Y2M3D"}'
         self.assertEqual(value, jolt_loads(encoded))

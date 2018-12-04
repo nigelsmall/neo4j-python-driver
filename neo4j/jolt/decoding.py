@@ -17,18 +17,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
+from collections import Mapping, Sequence
 from json import JSONDecoder
 from re import compile as re_compile
 
-from neotime import Date, Time
+from neotime import Date, Time, DateTime, Duration, \
+    DATE_ISO_PATTERN, TIME_ISO_PATTERN, DURATION_ISO_PATTERN
 
+from neo4j.types.graph import Graph
 from neo4j.types.spatial import hydrate_point
 
 
-DATE = re_compile(r'^\d{4}-\d{2}-\d{2}$')
-TIME = re_compile(r'^\d{2}:\d{2}:\d{2}(\.\d*)?$')
+DATETIME_ISO_PATTERN = re_compile(DATE_ISO_PATTERN.pattern[:-1] + r'.' + TIME_ISO_PATTERN.pattern[1:])
 
 
 class JoltDecoder(JSONDecoder):
@@ -37,6 +37,7 @@ class JoltDecoder(JSONDecoder):
         # TODO: something with original object_hook
         kwargs["object_hook"] = self._object_hook
         super(JoltDecoder, self).__init__(*args, **kwargs)
+        self.graph = None
 
     def _object_hook(self, o):
         if len(o) == 1:
@@ -58,12 +59,8 @@ class JoltDecoder(JSONDecoder):
                 return bytearray(int(v[x:(x + 2)], 16) for x in range(0, len(v), 2))
             elif k == "{}":
                 return dict(v)
-            elif k == "()":
-                return None  # TODO
-            elif k == "->":
-                return None  # TODO
-            elif k == "--":
-                return None  # TODO
+            elif k == "G":
+                return self._graph_hook(v)
             else:
                 return o
         else:
@@ -80,12 +77,61 @@ class JoltDecoder(JSONDecoder):
             raise JoltDecodeError(k)
 
     def _temporal_hook(self, s):
-        if DATE.match(s):
-            return Date.parse(s)
-        elif TIME.match(s):
-            return Time.parse(s)
+        if DATE_ISO_PATTERN.match(s):
+            return Date.from_iso_format(s)
+        elif TIME_ISO_PATTERN.match(s):
+            return Time.from_iso_format(s)
+        elif DATETIME_ISO_PATTERN.match(s):
+            return DateTime.from_iso_format(s)
+        elif DURATION_ISO_PATTERN.match(s):
+            return Duration.from_iso_format(s)
         else:
             raise JoltDecodeError("Unrecognized temporal format for value %r" % s)
+
+    def _graph_hook(self, g):
+        """
+
+        // Element -- G({})
+        {"G": {"1": [["Person"], {"name": "Alice"}]]}}
+        {"G": {"12": ["KNOWS", {"since": 1999}, "1", "2"]]}}
+
+        // Subgraph -- G([{}, {}])
+        {"G": [
+          {
+            "1": [["Person"], {"name": "Alice"}]],
+            "2": [["Person"], {"name": "Bob"}]]
+          },
+          {
+            "12": ["KNOWS", {"since": 1999}, "1", "2"]
+          },
+          ["1", "12"]
+        ]}
+
+        // Path -- G([{}, {}, []])
+        {"G": [
+          {
+            "1": [["Person"], {"name": "Alice"}]],
+            "2": [["Person"], {"name": "Bob"}]]
+          },
+          {
+            "12": ["KNOWS", {"since": 1999}, "1", "2"]
+          },
+          ["1", "12"]
+        ]}
+
+        :param g:
+        :return:
+        """
+        if self.graph is None:
+            self.graph = Graph()
+        if isinstance(g, Mapping):
+            # single element
+            pass
+        elif isinstance(g, Sequence):
+            # subgraph/path
+            pass
+        else:
+            raise JoltDecodeError("Cannot decode graph value %r" % g)
 
 
 class JoltDecodeError(ValueError):
