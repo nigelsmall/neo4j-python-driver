@@ -123,6 +123,8 @@ class Driver(object):
     #: Indicator of driver closure.
     _closed = False
 
+    __instance_count = 0
+
     @classmethod
     def _check_uri(cls, uri):
         """ Check whether a URI is compatible with a :class:`.Driver`
@@ -145,11 +147,18 @@ class Driver(object):
             parsed_scheme = "neo4j"
         for subclass in Driver.__subclasses__():
             if parsed_scheme == subclass.uri_scheme:
-                return subclass(uri, **config)
+                instance = subclass(uri, **config)
+                if cls.__instance_count == 0:
+                    _bolt_startup()
+                cls.__instance_count += 1
+                return instance
         raise ValueError("URI scheme %r not supported" % parsed.scheme)
 
     def __del__(self):
         self.close()
+        self.__instance_count -= 1
+        if self.__instance_count == 0:
+            _bolt_shutdown()
 
     def __enter__(self):
         return self
