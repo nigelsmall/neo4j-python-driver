@@ -38,7 +38,8 @@ from collections import deque
 from logging import getLogger
 from random import choice
 from select import select
-from time import perf_counter
+from threading import Thread
+from time import perf_counter, sleep
 
 from socket import (
     socket,
@@ -388,6 +389,58 @@ class Bolt:
 
     def defunct(self):
         raise NotImplementedError
+
+
+class BoltMonitor:
+
+    def __init__(self, address, frequency=1.0, **config):
+        self.address = address
+        self.frequency = frequency
+        self.config = PoolConfig.consume(config)
+        self.thread = None
+        self.running = False
+
+    def poll(self):
+        available = False
+        while self.running:
+            try:
+                s, protocol_version, handshake, data = connect(
+                    self.address,
+                    timeout=0,
+                    custom_resolver=self.config.resolver,
+                    ssl_context=self.config.get_ssl_context(),
+                    keep_alive=self.config.keep_alive,
+                )
+            except ServiceUnavailable:
+                if available:
+                    available = False
+                    self.on_unavailable()
+            else:
+                s.close()
+                if not available:
+                    available = True
+                    self.on_available()
+            sleep(self.frequency)
+
+    def start(self):
+        if self.thread is not None:
+            raise RuntimeError("Already started")
+        self.thread = Thread(target=self.poll)
+        self.running = True
+        self.thread.start()
+
+    def stop(self):
+        if self.thread is None:
+            raise RuntimeError("Already stopped")
+        self.running = False
+        self.thread.join()
+        self.thread = None
+
+    def on_available(self):
+        print("Service available")
+
+    def on_unavailable(self):
+        print("Service unavailable")
 
 
 class IOPool:
